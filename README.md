@@ -8,6 +8,7 @@ ML-DSA is a NIST-selected post-quantum cryptographic signature algorithm, former
 
 - ✅ RFC 9881 compliant ML-DSA certificate generation
 - ✅ Support for all three ML-DSA security levels (44, 65, 87)
+- ✅ **Hybrid certificates** (ML-DSA + RSA/ECDSA for transition period)
 - ✅ Self-signed certificate generation
 - ✅ Certificate Signing Request (CSR) generation
 - ✅ CA certificate generation
@@ -315,13 +316,33 @@ python3 mldsa_cert.py \
   --output testkey
 ```
 
-#### 6. Verify Certificate After Generation
+#### 6. Generate a Hybrid Certificate (ML-DSA + RSA)
 
 ```bash
 python3 mldsa_cert.py \
-  --subject "/CN=secure.example.com" \
-  --verify \
+  --subject "/CN=hybrid.example.com/O=Example Corp" \
+  --hybrid rsa \
+  --output hybrid
+```
+
+This creates both ML-DSA and RSA certificates for maximum compatibility.
+
+#### 7. Generate a Hybrid Certificate (ML-DSA + ECDSA)
+
+```bash
+python3 mldsa_cert.py \
+  --subject "/CN=secure.example.com/O=Example Corp" \
+  --hybrid ecdsa \
   --output secure
+```
+
+#### 8. Verify Certificate After Generation
+
+```bash
+python3 mldsa_cert.py \
+  --subject "/CN=test.example.com" \
+  --verify \
+  --output test
 ```
 
 ### Command-Line Options
@@ -330,6 +351,7 @@ python3 mldsa_cert.py \
 usage: mldsa_cert.py [-h] [--level {ml-dsa-44,ml-dsa-65,ml-dsa-87}]
                      --subject SUBJECT --output OUTPUT [--days DAYS]
                      [--san SAN] [--ca] [--csr] [--key-only] [--verify]
+                     [--hybrid {rsa,ecdsa}]
 
 Generate ML-DSA (Post-Quantum) X.509 Certificates (RFC 9881)
 
@@ -345,7 +367,95 @@ options:
   --csr                 Generate a CSR instead of self-signed certificate
   --key-only            Generate only the key pair (no certificate)
   --verify              Verify and display certificate details after generation
+  --hybrid {rsa,ecdsa}  Generate hybrid certificate with classical algorithm
 ```
+
+## Hybrid Certificates
+
+> 📘 **For detailed information**, see the [Hybrid Certificate Guide](HYBRID-GUIDE.md)
+
+### What are Hybrid Certificates?
+
+Hybrid certificates combine **post-quantum** (ML-DSA) and **classical** (RSA/ECDSA) cryptographic algorithms in a single certificate solution. This approach provides:
+
+- **Future-proofing**: Protection against quantum computer attacks
+- **Backward compatibility**: Works with systems that don't yet support ML-DSA
+- **Transition safety**: Dual protection during the migration period
+
+### When to Use Hybrid Certificates
+
+Use hybrid certificates when:
+- 🔄 Migrating from classical to post-quantum cryptography
+- 🌐 Supporting clients with varying cryptographic capabilities
+- 🔒 Requiring maximum security during the transition period
+- 📱 Deploying in mixed environments (legacy + modern systems)
+
+### How It Works
+
+The tool generates:
+1. **ML-DSA key pair** - Post-quantum resistant
+2. **Classical key pair** (RSA-3072 or ECDSA P-384)
+3. **Two certificates**:
+   - Primary ML-DSA certificate (`output.crt`)
+   - Classical certificate (`output_classical.crt`)
+
+Both certificates can be presented to clients, allowing them to choose the appropriate verification method.
+
+### Example: Hybrid Certificate Generation
+
+```bash
+# Generate hybrid certificate with RSA
+python3 mldsa_cert.py \
+  --subject "/CN=api.example.com/O=Example Corp/C=US" \
+  --hybrid rsa \
+  --san "DNS:www.example.com" \
+  --san "DNS:api.example.com" \
+  --days 730 \
+  --output api-hybrid
+
+# Generated files:
+# - api-hybrid.key (ML-DSA private key)
+# - api-hybrid.pub (ML-DSA public key)
+# - api-hybrid_rsa.key (RSA private key)
+# - api-hybrid_rsa.pub (RSA public key)
+# - api-hybrid.crt (Primary ML-DSA certificate)
+# - api-hybrid_classical.crt (RSA certificate for compatibility)
+```
+
+### Hybrid Algorithm Combinations
+
+| ML-DSA Level | Classical Option | Total Security | Use Case |
+|--------------|------------------|----------------|----------|
+| ML-DSA-44 | RSA-3072 | High | Standard web servers |
+| ML-DSA-44 | ECDSA P-384 | High | IoT devices, mobile |
+| ML-DSA-65 | RSA-3072 | Very High | Enterprise applications |
+| ML-DSA-65 | ECDSA P-384 | Very High | Cloud services |
+| ML-DSA-87 | RSA-3072 | Maximum | Government, finance |
+| ML-DSA-87 | ECDSA P-384 | Maximum | High-security systems |
+
+### Deployment Strategies
+
+**1. Dual-Stack Deployment**
+```bash
+# Server presents both certificates
+# Client chooses based on capability
+ssl_certificate /path/to/hybrid.crt;
+ssl_certificate /path/to/hybrid_classical.crt;
+ssl_certificate_key /path/to/hybrid.key;
+ssl_certificate_key /path/to/hybrid_rsa.key;
+```
+
+**2. Gradual Migration**
+```bash
+# Week 1-4: Deploy hybrid certificates
+# Week 5-8: Monitor client capabilities
+# Week 9+: Transition to ML-DSA only
+```
+
+**3. Client-Aware Switching**
+- Modern clients → Use ML-DSA certificate
+- Legacy clients → Use classical certificate
+- Monitored transition based on client support
 
 ## RFC 9881 Compliance
 
