@@ -1,0 +1,14 @@
+# No external Python packages required
+# This tool uses only Python standard library modules:
+# - subprocess
+# - os
+# - sys
+# - tempfile
+# - datetime
+# - pathlib
+# - typing
+# - argparse
+
+# System requirements (not Python packages):
+# - OpenSSL 3.0+ with oqs-provider
+# - liboqs (Open Quantum Safe library)
