@@ -5,7 +5,6 @@
 ### Core Application
 - **`mldsa_cert.py`** (23 KB) - Main certificate generation application
   - Generates ML-DSA certificates (RFC 9881 compliant)
-  - Supports hybrid certificates (ML-DSA + RSA/ECDSA)
   - Full command-line interface
   - Auto-detects OpenSSL 3 with OQS provider
 
@@ -29,12 +28,6 @@
   - CA certificates
   - SANs (Subject Alternative Names)
   - Key pairs only
-  
-- **`example-hybrid.sh`** (2.6 KB) - Hybrid certificate examples
-  - ML-DSA + RSA combinations
-  - ML-DSA + ECDSA combinations
-  - High-security CA examples
-  - Certificate comparison demos
 
 ### Documentation
 - **`README.md`** (16 KB) - Main documentation
@@ -42,13 +35,6 @@
   - Usage examples
   - RFC 9881 compliance details
   - Troubleshooting guide
-  
-- **`HYBRID-GUIDE.md`** (8.9 KB) - Hybrid certificate guide
-  - Detailed hybrid certificate explanation
-  - Algorithm selection guide
-  - Deployment strategies
-  - Migration timeline
-  - Best practices
   
 - **`requirements.txt`** (306 B) - Python dependencies
   - Documents that only stdlib is needed
@@ -64,9 +50,6 @@ When you run the tool, it generates:
 - `.pub` files - Public keys
 - `.crt` files - Certificates
 - `.csr` files - Certificate signing requests
-- `_classical.crt` - Classical certificates (hybrid mode)
-- `_mldsa.crt` - ML-DSA certificates (hybrid mode)
-- `_rsa.key`, `_ecdsa.key` - Classical keys (hybrid mode)
 
 ## Usage Flow
 
@@ -87,14 +70,12 @@ When you run the tool, it generates:
 │                 Certificate Generation                       │
 └─────────────────────────────────────────────────────────────┘
                            │
-                ┌──────────┴──────────┐
-                ▼                     ▼
-          Pure ML-DSA          Hybrid Mode
-         mldsa_cert.py      mldsa_cert.py --hybrid
-                │                     │
-                ▼                     ▼
-          ML-DSA cert         ML-DSA + Classical
-           (.crt)             (.crt, _classical.crt)
+                           ▼
+                      mldsa_cert.py
+                           │
+                           ▼
+                    ML-DSA certificate
+                        (.crt)
 ```
 
 ## Command Examples
@@ -107,12 +88,8 @@ When you run the tool, it generates:
 # Generate standard ML-DSA certificate
 python3 mldsa_cert.py --subject "/CN=example.com" --output mycert
 
-# Generate hybrid certificate
-python3 mldsa_cert.py --subject "/CN=example.com" --hybrid rsa --output hybrid
-
 # Run examples
 ./example.sh
-./example-hybrid.sh
 ```
 
 ## File Purposes
@@ -122,9 +99,7 @@ python3 mldsa_cert.py --subject "/CN=example.com" --hybrid rsa --output hybrid
 | `mldsa_cert.py` | Generate certificates | Always (main tool) |
 | `install-oqs.sh` | Setup on macOS | First-time installation |
 | `example.sh` | Learn basic usage | Getting started |
-| `example-hybrid.sh` | Learn hybrid certs | Transition scenarios |
 | `README.md` | Full documentation | Installation & reference |
-| `HYBRID-GUIDE.md` | Hybrid deep dive | Planning PQC migration |
 | `openssl-oqs.cnf` | OpenSSL config | Auto-used by tool |
 
 ## Dependencies
@@ -174,7 +149,6 @@ No external Python packages required!
 3. **Test**
    - Test on all supported platforms
    - Verify RFC 9881 compliance
-   - Check hybrid mode compatibility
 
 ### Contributing
 
@@ -182,7 +156,7 @@ No external Python packages required!
 - Follow existing code style
 - Maintain RFC 9881 compliance
 - Update documentation
-- Test hybrid and pure ML-DSA modes
+- Test all ML-DSA security levels
 
 ## Platform-Specific Notes
 

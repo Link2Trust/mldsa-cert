@@ -56,14 +56,12 @@ Get information about the API and supported algorithms.
   "version": "1.0",
   "rfc": "RFC 9881",
   "supported_algorithms": {
-    "ml_dsa": ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"],
-    "hybrid": ["rsa", "ecdsa"]
+    "ml_dsa": ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"]
   },
   "endpoints": {
     "generate": "/api/v1/certificate/generate",
     "generate_csr": "/api/v1/csr/generate",
-    "generate_keys": "/api/v1/keys/generate",
-    "hybrid": "/api/v1/certificate/hybrid"
+    "generate_keys": "/api/v1/keys/generate"
   }
 }
 ```
@@ -185,61 +183,6 @@ curl -X POST http://localhost:5000/api/v1/csr/generate \
   -d '{
     "subject": "/CN=secure.example.com",
     "san": ["DNS:secure.example.com"]
-  }'
-```
-
-### 6. Generate Hybrid Certificate
-
-**POST** `/api/v1/certificate/hybrid`
-
-Generate a hybrid certificate with both ML-DSA and classical (RSA/ECDSA) algorithms.
-
-**Request Body:**
-```json
-{
-  "subject": "/CN=hybrid.example.com/O=Example Corp",
-  "security_level": "ml-dsa-65",
-  "classical_algorithm": "rsa",
-  "days": 365,
-  "san": ["DNS:www.example.com"],
-  "is_ca": false
-}
-```
-
-**Parameters:**
-- `subject` (required): Certificate subject
-- `classical_algorithm` (required): `rsa` or `ecdsa`
-- `security_level` (optional): ML-DSA security level (default: `ml-dsa-65`)
-- `days` (optional): Validity period (default: 365, max: 7300)
-- `san` (optional): Array of Subject Alternative Names
-- `is_ca` (optional): CA certificate flag
-
-**Response:**
-```json
-{
-  "ml_dsa_certificate": "LS0tLS1CRUdJTi...",
-  "classical_certificate": "LS0tLS1CRUdJTi...",
-  "ml_dsa_private_key": "LS0tLS1CRUdJTi...",
-  "ml_dsa_public_key": "LS0tLS1CRUdJTi...",
-  "classical_private_key": "LS0tLS1CRUdJTi...",
-  "classical_public_key": "LS0tLS1CRUdJTi...",
-  "security_level": "ml-dsa-65",
-  "classical_algorithm": "rsa",
-  "subject": "/CN=hybrid.example.com/O=Example Corp",
-  "validity_days": 365
-}
-```
-
-**Example:**
-```bash
-curl -X POST http://localhost:5000/api/v1/certificate/hybrid \
-  -H "Content-Type: application/json" \
-  -d '{
-    "subject": "/CN=web.example.com/O=Web Services",
-    "classical_algorithm": "rsa",
-    "security_level": "ml-dsa-65",
-    "san": ["DNS:www.example.com", "DNS:example.com"],
-    "days": 730
   }'
 ```
 
@@ -420,19 +363,6 @@ curl -X POST http://localhost:5000/api/v1/certificate/generate \
   -d '{"subject": "/CN=example.com", "days": 365}' \
   | jq -r '.certificate' \
   | base64 -d > certificate.crt
-
-# Generate hybrid certificate
-curl -X POST http://localhost:5000/api/v1/certificate/hybrid \
-  -H "Content-Type: application/json" \
-  -d '{
-    "subject": "/CN=hybrid.example.com",
-    "classical_algorithm": "rsa",
-    "days": 730
-  }' > hybrid_response.json
-
-# Extract certificates from response
-cat hybrid_response.json | jq -r '.ml_dsa_certificate' | base64 -d > ml_dsa.crt
-cat hybrid_response.json | jq -r '.classical_certificate' | base64 -d > classical.crt
 ```
 
 ## Monitoring and Logging
@@ -484,7 +414,6 @@ pytest test_api.py
 
 For issues or questions:
 - Check the main [README.md](README.md)
-- Review [HYBRID-GUIDE.md](HYBRID-GUIDE.md) for hybrid certificates
 - Consult RFC 9881 for technical specifications
 
 ## License
