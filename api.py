@@ -58,14 +58,12 @@ def info():
         'version': '1.0',
         'rfc': 'RFC 9881',
         'supported_algorithms': {
-            'ml_dsa': ['ml-dsa-44', 'ml-dsa-65', 'ml-dsa-87'],
-            'hybrid': ['rsa', 'ecdsa']
+            'ml_dsa': ['ml-dsa-44', 'ml-dsa-65', 'ml-dsa-87']
         },
         'endpoints': {
             'generate': '/api/v1/certificate/generate',
             'generate_csr': '/api/v1/csr/generate',
-            'generate_keys': '/api/v1/keys/generate',
-            'hybrid': '/api/v1/certificate/hybrid'
+            'generate_keys': '/api/v1/keys/generate'
         }
     })
 
@@ -281,130 +279,6 @@ def generate_csr():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/v1/certificate/hybrid', methods=['POST'])
-def generate_hybrid_certificate():
-    """
-    Generate hybrid certificate (ML-DSA + RSA/ECDSA).
-    
-    Request body:
-    {
-        "subject": "/CN=example.com/O=Example Org",
-        "security_level": "ml-dsa-65",  // optional
-        "classical_algorithm": "rsa",  // required: "rsa" or "ecdsa"
-        "days": 365,  // optional
-        "san": ["DNS:www.example.com"],  // optional
-        "is_ca": false  // optional
-    }
-    
-    Returns:
-    {
-        "ml_dsa_certificate": "base64_encoded",
-        "classical_certificate": "base64_encoded",
-        "ml_dsa_private_key": "base64_encoded",
-        "ml_dsa_public_key": "base64_encoded",
-        "classical_private_key": "base64_encoded",
-        "classical_public_key": "base64_encoded",
-        "security_level": "ml-dsa-65",
-        "classical_algorithm": "rsa"
-    }
-    """
-    try:
-        data = request.get_json()
-        
-        # Required fields
-        if 'subject' not in data:
-            return jsonify({'error': ERR_SUBJECT_REQUIRED}), 400
-        if 'classical_algorithm' not in data:
-            return jsonify({'error': 'Classical algorithm is required (rsa or ecdsa)'}), 400
-        
-        subject = data['subject']
-        security_level = data.get('security_level', 'ml-dsa-65')
-        classical_algo = data['classical_algorithm']
-        days = data.get('days', 365)
-        san_list = data.get('san')
-        is_ca = data.get('is_ca', False)
-        
-        # Validate
-        if classical_algo not in ['rsa', 'ecdsa']:
-            return jsonify({'error': 'Classical algorithm must be "rsa" or "ecdsa"'}), 400
-        
-        if days > MAX_VALIDITY_DAYS:
-            return jsonify({'error': f'Max validity is {MAX_VALIDITY_DAYS} days'}), 400
-        
-        # Create generator
-        generator = MLDSACertificateGenerator(security_level, classical_algo)
-        
-        # Generate in temporary directory
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # ML-DSA files
-            mldsa_key = os.path.join(tmpdir, 'mldsa.key')
-            mldsa_pub = os.path.join(tmpdir, 'mldsa.pub')
-            
-            # Classical files
-            classical_key = os.path.join(tmpdir, f'{classical_algo}.key')
-            classical_pub = os.path.join(tmpdir, f'{classical_algo}.pub')
-            
-            # Certificate files
-            cert_file = os.path.join(tmpdir, 'cert.crt')
-            
-            # Generate ML-DSA keys
-            if not generator.generate_private_key(mldsa_key):
-                return jsonify({'error': 'Failed to generate ML-DSA private key'}), 500
-            
-            if not generator.generate_public_key(mldsa_key, mldsa_pub):
-                return jsonify({'error': 'Failed to generate ML-DSA public key'}), 500
-            
-            # Generate classical keys
-            if not generator.generate_classical_key(classical_key, classical_algo):
-                return jsonify({'error': f'Failed to generate {classical_algo.upper()} key'}), 500
-            
-            if not generator.generate_public_key(classical_key, classical_pub):
-                return jsonify({'error': f'Failed to generate {classical_algo.upper()} public key'}), 500
-            
-            # Generate hybrid certificate
-            if not generator.generate_hybrid_certificate(
-                mldsa_key, classical_key, cert_file, subject, days, san_list, is_ca
-            ):
-                return jsonify({'error': 'Failed to generate hybrid certificate'}), 500
-            
-            # Read all files
-            with open(mldsa_key, 'rb') as f:
-                mldsa_private_key = base64.b64encode(f.read()).decode('utf-8')
-            
-            with open(mldsa_pub, 'rb') as f:
-                mldsa_public_key = base64.b64encode(f.read()).decode('utf-8')
-            
-            with open(classical_key, 'rb') as f:
-                classical_private_key = base64.b64encode(f.read()).decode('utf-8')
-            
-            with open(classical_pub, 'rb') as f:
-                classical_public_key = base64.b64encode(f.read()).decode('utf-8')
-            
-            with open(cert_file, 'rb') as f:
-                ml_dsa_cert = base64.b64encode(f.read()).decode('utf-8')
-            
-            # Classical cert
-            classical_cert_file = cert_file.replace('.crt', '_classical.crt')
-            with open(classical_cert_file, 'rb') as f:
-                classical_cert = base64.b64encode(f.read()).decode('utf-8')
-        
-        return jsonify({
-            'ml_dsa_certificate': ml_dsa_cert,
-            'classical_certificate': classical_cert,
-            'ml_dsa_private_key': mldsa_private_key,
-            'ml_dsa_public_key': mldsa_public_key,
-            'classical_private_key': classical_private_key,
-            'classical_public_key': classical_public_key,
-            'security_level': security_level,
-            'classical_algorithm': classical_algo,
-            'subject': subject,
-            'validity_days': days
-        })
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Endpoint not found'}), 404
@@ -444,7 +318,6 @@ if __name__ == '__main__':
     print("  POST /api/v1/keys/generate            - Generate key pair")
     print("  POST /api/v1/certificate/generate     - Generate certificate")
     print("  POST /api/v1/csr/generate             - Generate CSR")
-    print("  POST /api/v1/certificate/hybrid       - Generate hybrid certificate")
     print(f"\nStarting server on http://localhost:{port}")
     
     if DEBUG_MODE:

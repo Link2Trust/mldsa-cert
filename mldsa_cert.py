@@ -54,13 +54,12 @@ class MLDSACertificateGenerator:
         'ml-dsa-87': {'oid': ML_DSA_87_OID, 'level': 5, 'alt_name': 'dilithium5'},
     }
     
-    def __init__(self, security_level: str = 'ml-dsa-65', hybrid_mode: Optional[str] = None):
+    def __init__(self, security_level: str = 'ml-dsa-65'):
         """
         Initialize the certificate generator.
         
         Args:
             security_level: ML-DSA security level ('ml-dsa-44', 'ml-dsa-65', 'ml-dsa-87')
-            hybrid_mode: Optional classical algorithm for hybrid mode ('rsa', 'ecdsa', None)
         """
         if security_level not in self.SECURITY_LEVELS:
             raise ValueError(f"Invalid security level. Choose from: {list(self.SECURITY_LEVELS.keys())}")
@@ -68,11 +67,6 @@ class MLDSACertificateGenerator:
         self.security_level = security_level
         self.oid = self.SECURITY_LEVELS[security_level]['oid']
         self.alt_name = self.SECURITY_LEVELS[security_level]['alt_name']
-        self.hybrid_mode = hybrid_mode
-        
-        # Validate hybrid mode
-        if hybrid_mode and hybrid_mode not in ['rsa', 'ecdsa']:
-            raise ValueError("Hybrid mode must be 'rsa' or 'ecdsa'")
         
     def check_openssl_support(self) -> Tuple[bool, str]:
         """
@@ -346,112 +340,6 @@ authorityKeyIdentifier = keyid,issuer
             print(f"✗ Exception generating CSR: {str(e)}")
             return False
     
-    def generate_classical_key(self, output_file: str, algorithm: str = 'rsa') -> bool:
-        """
-        Generate a classical (RSA or ECDSA) private key for hybrid certificates.
-        
-        Args:
-            output_file: Path to save the private key
-            algorithm: 'rsa' or 'ecdsa'
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            if algorithm == 'rsa':
-                cmd = [
-                    OPENSSL_BIN, 'genpkey',
-                    '-algorithm', 'RSA',
-                    '-pkeyopt', 'rsa_keygen_bits:3072',
-                    '-out', output_file
-                ]
-            elif algorithm == 'ecdsa':
-                cmd = [
-                    OPENSSL_BIN, 'genpkey',
-                    '-algorithm', 'EC',
-                    '-pkeyopt', 'ec_paramgen_curve:P-384',
-                    '-out', output_file
-                ]
-            else:
-                print(f"✗ Unknown algorithm: {algorithm}")
-                return False
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            
-            if result.returncode == 0:
-                print(f"✓ {algorithm.upper()} key generated: {output_file}")
-                return True
-            else:
-                print(f"✗ Error generating {algorithm.upper()} key: {result.stderr}")
-                return False
-                
-        except Exception as e:
-            print(f"✗ Exception generating classical key: {str(e)}")
-            return False
-    
-    def generate_hybrid_certificate(
-        self,
-        mldsa_key_file: str,
-        classical_key_file: str,
-        output_file: str,
-        subject: str,
-        days: int = 365,
-        san_list: Optional[list] = None,
-        is_ca: bool = False
-    ) -> bool:
-        """
-        Generate a hybrid certificate with both ML-DSA and classical signatures.
-        
-        This creates a certificate signed by the ML-DSA key, with the classical
-        public key embedded in the Subject Public Key Info for compatibility.
-        
-        Args:
-            mldsa_key_file: Path to the ML-DSA private key
-            classical_key_file: Path to the classical (RSA/ECDSA) private key
-            output_file: Path to save the certificate
-            subject: Certificate subject
-            days: Certificate validity period in days
-            san_list: List of Subject Alternative Names
-            is_ca: Whether this is a CA certificate
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            print("\n→ Generating hybrid certificate (ML-DSA + Classical)...")
-            
-            # First, generate a certificate with the classical key
-            classical_cert = output_file.replace('.crt', '_classical.crt')
-            if not self.generate_self_signed_certificate(
-                classical_key_file, classical_cert, subject, days, san_list, is_ca
-            ):
-                print("✗ Failed to generate classical certificate component")
-                return False
-            
-            # Then generate the ML-DSA certificate
-            mldsa_cert = output_file.replace('.crt', '_mldsa.crt')
-            if not self.generate_self_signed_certificate(
-                mldsa_key_file, mldsa_cert, subject, days, san_list, is_ca
-            ):
-                print("✗ Failed to generate ML-DSA certificate component")
-                return False
-            
-            # For now, we'll use the ML-DSA cert as primary and keep classical as reference
-            # A full hybrid implementation would require custom ASN.1 encoding
-            import shutil
-            shutil.copy(mldsa_cert, output_file)
-            
-            print(f"✓ Hybrid certificate generated: {output_file}")
-            print(f"  Primary: ML-DSA-{self.security_level.split('-')[-1]}")
-            print(f"  Classical reference: {classical_cert}")
-            print("  Note: Both certificates available for compatibility")
-            
-            return True
-            
-        except Exception as e:
-            print(f"✗ Exception generating hybrid certificate: {str(e)}")
-            return False
-    
     def verify_certificate(self, cert_file: str) -> bool:
         """
         Verify and display certificate information.
@@ -485,8 +373,6 @@ def print_header(args):
     """Print application header and configuration."""
     print("\nML-DSA Certificate Generator (RFC 9881)")
     print(f"Security Level: {args.level}")
-    if args.hybrid:
-        print(f"Hybrid Mode: ML-DSA + {args.hybrid.upper()}")
     print("="*70)
 
 
@@ -505,10 +391,10 @@ def check_and_warn_openssl_support(generator):
 
 
 def generate_keys(generator, args):
-    """Generate ML-DSA and optional classical keys.
+    """Generate ML-DSA keys.
     
     Returns:
-        Tuple of (key_file, pub_file, classical_key_file, classical_pub_file)
+        Tuple of (key_file, pub_file)
     """
     key_file = f"{args.output}.key"
     pub_file = f"{args.output}.pub"
@@ -520,20 +406,7 @@ def generate_keys(generator, args):
     if not generator.generate_public_key(key_file, pub_file):
         sys.exit(1)
     
-    # Generate classical key if hybrid mode
-    classical_key_file = None
-    classical_pub_file = None
-    if args.hybrid:
-        classical_key_file = f"{args.output}_{args.hybrid}.key"
-        classical_pub_file = f"{args.output}_{args.hybrid}.pub"
-        
-        if not generator.generate_classical_key(classical_key_file, args.hybrid):
-            sys.exit(1)
-        
-        if not generator.generate_public_key(classical_key_file, classical_pub_file):
-            sys.exit(1)
-    
-    return key_file, pub_file, classical_key_file, classical_pub_file
+    return key_file, pub_file
 
 
 def _generate_csr_workflow(generator, key_file, csr_file, args):
@@ -543,17 +416,11 @@ def _generate_csr_workflow(generator, key_file, csr_file, args):
     print("\n✓ CSR generation complete!")
 
 
-def _generate_certificate_workflow(generator, args, key_file, classical_key_file, cert_file):
-    """Generate certificate workflow (hybrid or standard)."""
-    if args.hybrid and classical_key_file:
-        success = generator.generate_hybrid_certificate(
-            key_file, classical_key_file, cert_file, args.subject, 
-            args.days, args.san, args.ca
-        )
-    else:
-        success = generator.generate_self_signed_certificate(
-            key_file, cert_file, args.subject, args.days, args.san, args.ca
-        )
+def _generate_certificate_workflow(generator, args, key_file, cert_file):
+    """Generate certificate workflow."""
+    success = generator.generate_self_signed_certificate(
+        key_file, cert_file, args.subject, args.days, args.san, args.ca
+    )
     
     if not success:
         sys.exit(1)
@@ -564,7 +431,7 @@ def _generate_certificate_workflow(generator, args, key_file, classical_key_file
     print("\n✓ Certificate generation complete!")
 
 
-def generate_certificate_or_csr(generator, args, key_file, classical_key_file):
+def generate_certificate_or_csr(generator, args, key_file):
     """Generate certificate or CSR based on arguments.
     
     Returns:
@@ -576,21 +443,16 @@ def generate_certificate_or_csr(generator, args, key_file, classical_key_file):
     if args.csr:
         _generate_csr_workflow(generator, key_file, csr_file, args)
     else:
-        _generate_certificate_workflow(generator, args, key_file, classical_key_file, cert_file)
+        _generate_certificate_workflow(generator, args, key_file, cert_file)
     
     return cert_file, csr_file
 
 
-def print_generated_files(args, key_file, pub_file, classical_key_file, classical_pub_file, cert_file, csr_file):
+def print_generated_files(args, key_file, pub_file, cert_file, csr_file):
     """Print summary of generated files."""
     print("\nGenerated files:")
     print(f"  ML-DSA Private Key: {key_file}")
     print(f"  ML-DSA Public Key:  {pub_file}")
-    
-    if args.hybrid and classical_key_file:
-        print(f"  {args.hybrid.upper()} Private Key: {classical_key_file}")
-        print(f"  {args.hybrid.upper()} Public Key:  {classical_pub_file}")
-        print(f"  Classical Cert:     {cert_file.replace('.crt', '_classical.crt')}")
     
     if args.csr:
         print(f"  CSR:                {csr_file}")
@@ -611,12 +473,6 @@ Examples:
   # Generate a CA certificate with ML-DSA-87 (highest security)
   python3 mldsa_cert.py --level ml-dsa-87 --subject "/CN=My CA/O=Example" --ca --output ca
 
-  # Generate a hybrid certificate (ML-DSA + RSA for compatibility)
-  python3 mldsa_cert.py --subject "/CN=hybrid.example.com" --hybrid rsa --output hybrid
-
-  # Generate a hybrid certificate with ECDSA
-  python3 mldsa_cert.py --subject "/CN=secure.example.com" --hybrid ecdsa --output secure
-  
   # Generate a certificate with Subject Alternative Names
   python3 mldsa_cert.py --subject "/CN=web.example.com" --san "DNS:www.example.com" --san "DNS:example.com" --output web
   
@@ -627,10 +483,6 @@ Security Levels:
   ml-dsa-44: NIST Security Level 2 (equivalent to AES-128)
   ml-dsa-65: NIST Security Level 3 (equivalent to AES-192) [default]
   ml-dsa-87: NIST Security Level 5 (equivalent to AES-256)
-
-Hybrid Mode:
-  Combines ML-DSA with classical algorithms (RSA-3072 or ECDSA P-384)
-  for compatibility during the post-quantum transition period.
         """
     )
     
@@ -690,35 +542,29 @@ Hybrid Mode:
         help='Verify and display certificate details after generation'
     )
     
-    parser.add_argument(
-        '--hybrid',
-        choices=['rsa', 'ecdsa'],
-        help='Generate hybrid certificate with classical algorithm (rsa or ecdsa)'
-    )
-    
     args = parser.parse_args()
     
     # Initialize generator
     print_header(args)
-    generator = MLDSACertificateGenerator(args.level, args.hybrid)
+    generator = MLDSACertificateGenerator(args.level)
     
     # Check OpenSSL support
     check_and_warn_openssl_support(generator)
     
     # Generate keys
-    key_file, pub_file, classical_key_file, classical_pub_file = generate_keys(generator, args)
+    key_file, pub_file = generate_keys(generator, args)
     
     if args.key_only:
         print("\n✓ Key pair generation complete!")
-        print_generated_files(args, key_file, pub_file, classical_key_file, classical_pub_file, 
+        print_generated_files(args, key_file, pub_file, 
                             f"{args.output}.crt", f"{args.output}.csr")
         sys.exit(0)
     
     # Generate certificate or CSR
-    cert_file, csr_file = generate_certificate_or_csr(generator, args, key_file, classical_key_file)
+    cert_file, csr_file = generate_certificate_or_csr(generator, args, key_file)
     
     # Print summary
-    print_generated_files(args, key_file, pub_file, classical_key_file, classical_pub_file, cert_file, csr_file)
+    print_generated_files(args, key_file, pub_file, cert_file, csr_file)
 
 
 if __name__ == '__main__':
