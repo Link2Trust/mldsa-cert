@@ -103,7 +103,7 @@ class MLDSACertificateGenerator:
                 )
                 if test_result.returncode == 0 or 'dilithium' in test_result.stderr.lower():
                     return True, "OpenSSL supports Dilithium/ML-DSA"
-            except:
+            except (subprocess.TimeoutExpired, OSError):
                 pass
             
             return False, "OpenSSL does not appear to support ML-DSA. Install liboqs and oqs-provider."
@@ -444,7 +444,7 @@ authorityKeyIdentifier = keyid,issuer
             print(f"✓ Hybrid certificate generated: {output_file}")
             print(f"  Primary: ML-DSA-{self.security_level.split('-')[-1]}")
             print(f"  Classical reference: {classical_cert}")
-            print(f"  Note: Both certificates available for compatibility")
+            print("  Note: Both certificates available for compatibility")
             
             return True
             
@@ -479,6 +479,124 @@ authorityKeyIdentifier = keyid,issuer
         except Exception as e:
             print(f"✗ Exception verifying certificate: {str(e)}")
             return False
+
+
+def print_header(args):
+    """Print application header and configuration."""
+    print("\nML-DSA Certificate Generator (RFC 9881)")
+    print(f"Security Level: {args.level}")
+    if args.hybrid:
+        print(f"Hybrid Mode: ML-DSA + {args.hybrid.upper()}")
+    print("="*70)
+
+
+def check_and_warn_openssl_support(generator):
+    """Check OpenSSL support and print warnings if needed."""
+    supported, message = generator.check_openssl_support()
+    print(f"\nOpenSSL Check: {message}")
+    if not supported:
+        print("\n⚠ WARNING: ML-DSA support not detected in OpenSSL.")
+        print("To use this tool, you need:")
+        print("  1. OpenSSL 3.0+ with liboqs integration")
+        print("  2. oqs-provider installed")
+        print("\nInstallation guide: https://github.com/open-quantum-safe/oqs-provider")
+        print("\nProceeding anyway (may fail)...")
+    print("\n" + "="*70)
+
+
+def generate_keys(generator, args):
+    """Generate ML-DSA and optional classical keys.
+    
+    Returns:
+        Tuple of (key_file, pub_file, classical_key_file, classical_pub_file)
+    """
+    key_file = f"{args.output}.key"
+    pub_file = f"{args.output}.pub"
+    
+    # Generate ML-DSA key
+    if not generator.generate_private_key(key_file):
+        sys.exit(1)
+    
+    if not generator.generate_public_key(key_file, pub_file):
+        sys.exit(1)
+    
+    # Generate classical key if hybrid mode
+    classical_key_file = None
+    classical_pub_file = None
+    if args.hybrid:
+        classical_key_file = f"{args.output}_{args.hybrid}.key"
+        classical_pub_file = f"{args.output}_{args.hybrid}.pub"
+        
+        if not generator.generate_classical_key(classical_key_file, args.hybrid):
+            sys.exit(1)
+        
+        if not generator.generate_public_key(classical_key_file, classical_pub_file):
+            sys.exit(1)
+    
+    return key_file, pub_file, classical_key_file, classical_pub_file
+
+
+def _generate_csr_workflow(generator, key_file, csr_file, args):
+    """Generate CSR workflow."""
+    if not generator.generate_csr(key_file, csr_file, args.subject, args.san):
+        sys.exit(1)
+    print("\n✓ CSR generation complete!")
+
+
+def _generate_certificate_workflow(generator, args, key_file, classical_key_file, cert_file):
+    """Generate certificate workflow (hybrid or standard)."""
+    if args.hybrid and classical_key_file:
+        success = generator.generate_hybrid_certificate(
+            key_file, classical_key_file, cert_file, args.subject, 
+            args.days, args.san, args.ca
+        )
+    else:
+        success = generator.generate_self_signed_certificate(
+            key_file, cert_file, args.subject, args.days, args.san, args.ca
+        )
+    
+    if not success:
+        sys.exit(1)
+    
+    if args.verify:
+        generator.verify_certificate(cert_file)
+    
+    print("\n✓ Certificate generation complete!")
+
+
+def generate_certificate_or_csr(generator, args, key_file, classical_key_file):
+    """Generate certificate or CSR based on arguments.
+    
+    Returns:
+        Tuple of (cert_file, csr_file)
+    """
+    cert_file = f"{args.output}.crt"
+    csr_file = f"{args.output}.csr"
+    
+    if args.csr:
+        _generate_csr_workflow(generator, key_file, csr_file, args)
+    else:
+        _generate_certificate_workflow(generator, args, key_file, classical_key_file, cert_file)
+    
+    return cert_file, csr_file
+
+
+def print_generated_files(args, key_file, pub_file, classical_key_file, classical_pub_file, cert_file, csr_file):
+    """Print summary of generated files."""
+    print("\nGenerated files:")
+    print(f"  ML-DSA Private Key: {key_file}")
+    print(f"  ML-DSA Public Key:  {pub_file}")
+    
+    if args.hybrid and classical_key_file:
+        print(f"  {args.hybrid.upper()} Private Key: {classical_key_file}")
+        print(f"  {args.hybrid.upper()} Public Key:  {classical_pub_file}")
+        print(f"  Classical Cert:     {cert_file.replace('.crt', '_classical.crt')}")
+    
+    if args.csr:
+        print(f"  CSR:                {csr_file}")
+    else:
+        print(f"  Certificate:        {cert_file}")
+    print()
 
 
 def main():
@@ -581,95 +699,26 @@ Hybrid Mode:
     args = parser.parse_args()
     
     # Initialize generator
-    print(f"\nML-DSA Certificate Generator (RFC 9881)")
-    print(f"Security Level: {args.level}")
-    if args.hybrid:
-        print(f"Hybrid Mode: ML-DSA + {args.hybrid.upper()}")
-    print("="*70)
-    
+    print_header(args)
     generator = MLDSACertificateGenerator(args.level, args.hybrid)
     
     # Check OpenSSL support
-    supported, message = generator.check_openssl_support()
-    print(f"\nOpenSSL Check: {message}")
-    if not supported:
-        print("\n⚠ WARNING: ML-DSA support not detected in OpenSSL.")
-        print("To use this tool, you need:")
-        print("  1. OpenSSL 3.0+ with liboqs integration")
-        print("  2. oqs-provider installed")
-        print("\nInstallation guide: https://github.com/open-quantum-safe/oqs-provider")
-        print("\nProceeding anyway (may fail)...")
+    check_and_warn_openssl_support(generator)
     
-    print("\n" + "="*70)
-    
-    # Generate private key(s)
-    key_file = f"{args.output}.key"
-    pub_file = f"{args.output}.pub"
-    cert_file = f"{args.output}.crt"
-    csr_file = f"{args.output}.csr"
-    
-    # Generate ML-DSA key
-    if not generator.generate_private_key(key_file):
-        sys.exit(1)
-    
-    if not generator.generate_public_key(key_file, pub_file):
-        sys.exit(1)
-    
-    # Generate classical key if hybrid mode
-    classical_key_file = None
-    classical_pub_file = None
-    if args.hybrid:
-        classical_key_file = f"{args.output}_{args.hybrid}.key"
-        classical_pub_file = f"{args.output}_{args.hybrid}.pub"
-        
-        if not generator.generate_classical_key(classical_key_file, args.hybrid):
-            sys.exit(1)
-        
-        if not generator.generate_public_key(classical_key_file, classical_pub_file):
-            sys.exit(1)
+    # Generate keys
+    key_file, pub_file, classical_key_file, classical_pub_file = generate_keys(generator, args)
     
     if args.key_only:
         print("\n✓ Key pair generation complete!")
+        print_generated_files(args, key_file, pub_file, classical_key_file, classical_pub_file, 
+                            f"{args.output}.crt", f"{args.output}.csr")
         sys.exit(0)
     
-    # Generate CSR or certificate
-    if args.csr:
-        if not generator.generate_csr(key_file, csr_file, args.subject, args.san):
-            sys.exit(1)
-        print(f"\n✓ CSR generation complete!")
-    else:
-        # Generate hybrid or standard certificate
-        if args.hybrid and classical_key_file:
-            if not generator.generate_hybrid_certificate(
-                key_file, classical_key_file, cert_file, args.subject, 
-                args.days, args.san, args.ca
-            ):
-                sys.exit(1)
-        else:
-            if not generator.generate_self_signed_certificate(
-                key_file, cert_file, args.subject, args.days, args.san, args.ca
-            ):
-                sys.exit(1)
-        
-        if args.verify:
-            generator.verify_certificate(cert_file)
-        
-        print(f"\n✓ Certificate generation complete!")
+    # Generate certificate or CSR
+    cert_file, csr_file = generate_certificate_or_csr(generator, args, key_file, classical_key_file)
     
-    print("\nGenerated files:")
-    print(f"  ML-DSA Private Key: {key_file}")
-    print(f"  ML-DSA Public Key:  {pub_file}")
-    
-    if args.hybrid and classical_key_file:
-        print(f"  {args.hybrid.upper()} Private Key: {classical_key_file}")
-        print(f"  {args.hybrid.upper()} Public Key:  {classical_pub_file}")
-        print(f"  Classical Cert:     {cert_file.replace('.crt', '_classical.crt')}")
-    
-    if args.csr:
-        print(f"  CSR:                {csr_file}")
-    else:
-        print(f"  Certificate:        {cert_file}")
-    print()
+    # Print summary
+    print_generated_files(args, key_file, pub_file, classical_key_file, classical_pub_file, cert_file, csr_file)
 
 
 if __name__ == '__main__':

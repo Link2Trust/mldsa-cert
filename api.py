@@ -17,11 +17,27 @@ import json
 from mldsa_cert import MLDSACertificateGenerator
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+
+# CORS Configuration
+# WARNING: This allows all origins. In production, restrict to specific domains:
+# CORS(app, origins=["https://yourdomain.com"])
+CORS(app)  # Development only - allows all origins
 
 # Configuration
 TEMP_DIR = tempfile.gettempdir()
 MAX_VALIDITY_DAYS = 7300  # ~20 years
+DEBUG_MODE = os.environ.get('FLASK_DEBUG', 'False').lower() in ('true', '1', 'yes')
+
+# File name constants
+PRIVATE_KEY_FILENAME = 'private.key'
+PUBLIC_KEY_FILENAME = 'public.pub'
+CERTIFICATE_FILENAME = 'certificate.crt'
+CSR_FILENAME = 'request.csr'
+
+# Error message constants
+ERR_PRIVATE_KEY_GENERATION = 'Failed to generate private key'
+ERR_PUBLIC_KEY_GENERATION = 'Failed to generate public key'
+ERR_SUBJECT_REQUIRED = 'Subject is required'
 
 
 @app.route('/health', methods=['GET'])
@@ -84,15 +100,15 @@ def generate_keys():
         
         # Generate temporary files
         with tempfile.TemporaryDirectory() as tmpdir:
-            key_file = os.path.join(tmpdir, 'private.key')
-            pub_file = os.path.join(tmpdir, 'public.pub')
+            key_file = os.path.join(tmpdir, PRIVATE_KEY_FILENAME)
+            pub_file = os.path.join(tmpdir, PUBLIC_KEY_FILENAME)
             
             # Generate keys
             if not generator.generate_private_key(key_file):
-                return jsonify({'error': 'Failed to generate private key'}), 500
+                return jsonify({'error': ERR_PRIVATE_KEY_GENERATION}), 500
             
             if not generator.generate_public_key(key_file, pub_file):
-                return jsonify({'error': 'Failed to generate public key'}), 500
+                return jsonify({'error': ERR_PUBLIC_KEY_GENERATION}), 500
             
             # Read and encode keys
             with open(key_file, 'rb') as f:
@@ -138,7 +154,7 @@ def generate_certificate():
         
         # Required fields
         if 'subject' not in data:
-            return jsonify({'error': 'Subject is required'}), 400
+            return jsonify({'error': ERR_SUBJECT_REQUIRED}), 400
         
         subject = data['subject']
         security_level = data.get('security_level', 'ml-dsa-65')
@@ -155,16 +171,16 @@ def generate_certificate():
         
         # Generate in temporary directory
         with tempfile.TemporaryDirectory() as tmpdir:
-            key_file = os.path.join(tmpdir, 'private.key')
-            pub_file = os.path.join(tmpdir, 'public.pub')
-            cert_file = os.path.join(tmpdir, 'certificate.crt')
+            key_file = os.path.join(tmpdir, PRIVATE_KEY_FILENAME)
+            pub_file = os.path.join(tmpdir, PUBLIC_KEY_FILENAME)
+            cert_file = os.path.join(tmpdir, CERTIFICATE_FILENAME)
             
             # Generate keys
             if not generator.generate_private_key(key_file):
-                return jsonify({'error': 'Failed to generate private key'}), 500
+                return jsonify({'error': ERR_PRIVATE_KEY_GENERATION}), 500
             
             if not generator.generate_public_key(key_file, pub_file):
-                return jsonify({'error': 'Failed to generate public key'}), 500
+                return jsonify({'error': ERR_PUBLIC_KEY_GENERATION}), 500
             
             # Generate certificate
             if not generator.generate_self_signed_certificate(
@@ -218,7 +234,7 @@ def generate_csr():
         data = request.get_json()
         
         if 'subject' not in data:
-            return jsonify({'error': 'Subject is required'}), 400
+            return jsonify({'error': ERR_SUBJECT_REQUIRED}), 400
         
         subject = data['subject']
         security_level = data.get('security_level', 'ml-dsa-65')
@@ -229,16 +245,16 @@ def generate_csr():
         
         # Generate in temporary directory
         with tempfile.TemporaryDirectory() as tmpdir:
-            key_file = os.path.join(tmpdir, 'private.key')
-            pub_file = os.path.join(tmpdir, 'public.pub')
-            csr_file = os.path.join(tmpdir, 'request.csr')
+            key_file = os.path.join(tmpdir, PRIVATE_KEY_FILENAME)
+            pub_file = os.path.join(tmpdir, PUBLIC_KEY_FILENAME)
+            csr_file = os.path.join(tmpdir, CSR_FILENAME)
             
             # Generate keys
             if not generator.generate_private_key(key_file):
-                return jsonify({'error': 'Failed to generate private key'}), 500
+                return jsonify({'error': ERR_PRIVATE_KEY_GENERATION}), 500
             
             if not generator.generate_public_key(key_file, pub_file):
-                return jsonify({'error': 'Failed to generate public key'}), 500
+                return jsonify({'error': ERR_PUBLIC_KEY_GENERATION}), 500
             
             # Generate CSR
             if not generator.generate_csr(key_file, csr_file, subject, san_list):
@@ -297,7 +313,7 @@ def generate_hybrid_certificate():
         
         # Required fields
         if 'subject' not in data:
-            return jsonify({'error': 'Subject is required'}), 400
+            return jsonify({'error': ERR_SUBJECT_REQUIRED}), 400
         if 'classical_algorithm' not in data:
             return jsonify({'error': 'Classical algorithm is required (rsa or ecdsa)'}), 400
         
@@ -430,7 +446,13 @@ if __name__ == '__main__':
     print("  POST /api/v1/csr/generate             - Generate CSR")
     print("  POST /api/v1/certificate/hybrid       - Generate hybrid certificate")
     print(f"\nStarting server on http://localhost:{port}")
+    
+    if DEBUG_MODE:
+        print("\n⚠️  WARNING: Debug mode is enabled. DO NOT use in production!")
+    
     print("=" * 70)
     print()
     
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # Debug mode controlled by environment variable
+    # Set FLASK_DEBUG=False in production
+    app.run(host='0.0.0.0', port=port, debug=DEBUG_MODE)
