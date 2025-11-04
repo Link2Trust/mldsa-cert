@@ -13,31 +13,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Set up Java (required by scanner)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-
-      # Create an output folder for the CBOM file
-      - name: Prepare CBOM folder
-        run: mkdir -p cbom
-
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarqube.link2trust.be
-        with:
-          args: >
-            -Dsonar.crypto.cbom.enable=true
-            -Dsonar.crypto.cbom.output=cbom/cbom.json
-
-      # OPTIONAL: keep a copy of the file as a build artifact
-      - name: Upload CBOM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cbom
-          path: cbom/cbom.json
-          if-no-files-found: error
