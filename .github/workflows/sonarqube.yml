@@ -19,7 +19,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: sonarsource/sonarqube-scan-action@v6
         env:
-          SONAR_HOST_URL: https://sonarqube.link2trust.be
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarqube.link2trust.be
