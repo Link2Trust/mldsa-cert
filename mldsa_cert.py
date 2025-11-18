@@ -340,6 +340,76 @@ authorityKeyIdentifier = keyid,issuer
             print(f"✗ Exception generating CSR: {str(e)}")
             return False
     
+    def sign_csr_with_ca(
+        self,
+        csr_file: str,
+        ca_cert_file: str,
+        ca_key_file: str,
+        output_file: str,
+        days: int = 365,
+        is_ca: bool = False
+    ) -> bool:
+        """
+        Sign a Certificate Signing Request (CSR) with a CA certificate.
+        
+        Args:
+            csr_file: Path to the CSR file
+            ca_cert_file: Path to the CA certificate
+            ca_key_file: Path to the CA private key
+            output_file: Path to save the signed certificate
+            days: Certificate validity period in days
+            is_ca: Whether the signed certificate should be a CA certificate
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Create temporary config file for extensions
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.cnf', delete=False) as f:
+                extension = 'v3_ca' if is_ca else 'v3_end'
+                config_content = self.create_certificate_config(
+                    subject="",  # Subject comes from CSR
+                    days=days,
+                    san_list=None  # SANs come from CSR
+                )
+                f.write(config_content)
+                config_file = f.name
+            
+            try:
+                extension = 'v3_ca' if is_ca else 'v3_end'
+                
+                cmd = [
+                    OPENSSL_BIN, 'x509',
+                    '-req',
+                    '-in', csr_file,
+                    '-CA', ca_cert_file,
+                    '-CAkey', ca_key_file,
+                    '-CAcreateserial',
+                    '-out', output_file,
+                    '-days', str(days),
+                    '-extfile', config_file,
+                    '-extensions', extension
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                if result.returncode == 0:
+                    print(f"✓ Certificate signed: {output_file}")
+                    print(f"  CA: {ca_cert_file}")
+                    print(f"  Validity: {days} days")
+                    print(f"  Algorithm: {self.security_level} (OID: {self.oid})")
+                    return True
+                else:
+                    print(f"✗ Error signing certificate: {result.stderr}")
+                    return False
+                    
+            finally:
+                os.unlink(config_file)
+                
+        except Exception as e:
+            print(f"✗ Exception signing certificate: {str(e)}")
+            return False
+    
     def verify_certificate(self, cert_file: str) -> bool:
         """
         Verify and display certificate information.
@@ -476,6 +546,12 @@ Examples:
   # Generate a certificate with Subject Alternative Names
   python3 mldsa_cert.py --subject "/CN=web.example.com" --san "DNS:www.example.com" --san "DNS:example.com" --output web
   
+  # Generate a CSR
+  python3 mldsa_cert.py --subject "/CN=server.example.com" --csr --output server
+  
+  # Sign a CSR with a CA certificate
+  python3 mldsa_cert.py --sign-csr server.csr --ca-cert ca.crt --ca-key ca.key --output server-signed --days 365
+  
   # Generate only a key pair
   python3 mldsa_cert.py --subject "/CN=test" --key-only --output testkey
 
@@ -495,8 +571,7 @@ Security Levels:
     
     parser.add_argument(
         '--subject',
-        required=True,
-        help='Certificate subject (e.g., "/CN=example.com/O=Example Org/C=US")'
+        help='Certificate subject (e.g., "/CN=example.com/O=Example Org/C=US") [required unless using --sign-csr]'
     )
     
     parser.add_argument(
@@ -542,8 +617,100 @@ Security Levels:
         help='Verify and display certificate details after generation'
     )
     
+    # CSR signing arguments
+    parser.add_argument(
+        '--sign-csr',
+        metavar='CSR_FILE',
+        help='Sign a CSR with a CA certificate (requires --ca-cert and --ca-key)'
+    )
+    
+    parser.add_argument(
+        '--ca-cert',
+        metavar='CA_CERT',
+        help='CA certificate file for signing CSRs'
+    )
+    
+    parser.add_argument(
+        '--ca-key',
+        metavar='CA_KEY',
+        help='CA private key file for signing CSRs'
+    )
+    
     args = parser.parse_args()
     
+    # Validate arguments based on mode
+    if args.sign_csr:
+        # CSR signing mode - subject not required
+        if not args.output:
+            print("Error: --output is required")
+            sys.exit(1)
+    else:
+        # Certificate/CSR generation mode - subject is required
+        if not args.subject:
+            print("Error: --subject is required (unless using --sign-csr)")
+            sys.exit(1)
+        if not args.output:
+            print("Error: --output is required")
+            sys.exit(1)
+    
+    # Check if this is a CSR signing operation
+    if args.sign_csr:
+        # Validate CSR signing arguments
+        if not args.ca_cert:
+            print("Error: --ca-cert is required when using --sign-csr")
+            sys.exit(1)
+        if not args.ca_key:
+            print("Error: --ca-key is required when using --sign-csr")
+            sys.exit(1)
+        
+        # Check if files exist
+        if not os.path.exists(args.sign_csr):
+            print(f"Error: CSR file not found: {args.sign_csr}")
+            sys.exit(1)
+        if not os.path.exists(args.ca_cert):
+            print(f"Error: CA certificate not found: {args.ca_cert}")
+            sys.exit(1)
+        if not os.path.exists(args.ca_key):
+            print(f"Error: CA private key not found: {args.ca_key}")
+            sys.exit(1)
+        
+        # Initialize generator for CSR signing
+        print("\nML-DSA CSR Signing (RFC 9881)")
+        print(f"Security Level: {args.level}")
+        print("="*70)
+        generator = MLDSACertificateGenerator(args.level)
+        
+        print(f"\nCSR File:        {args.sign_csr}")
+        print(f"CA Certificate:  {args.ca_cert}")
+        print(f"CA Private Key:  {args.ca_key}")
+        print(f"Output:          {args.output}.crt")
+        print(f"Validity:        {args.days} days")
+        print(f"CA Certificate:  {args.ca}")
+        print()
+        
+        # Sign the CSR
+        output_cert = f"{args.output}.crt"
+        success = generator.sign_csr_with_ca(
+            args.sign_csr,
+            args.ca_cert,
+            args.ca_key,
+            output_cert,
+            args.days,
+            args.ca
+        )
+        
+        if not success:
+            sys.exit(1)
+        
+        if args.verify:
+            generator.verify_certificate(output_cert)
+        
+        print("\n✓ CSR signing complete!")
+        print(f"\nSigned certificate: {output_cert}")
+        print()
+        sys.exit(0)
+    
+    # Standard certificate/CSR generation workflow
     # Initialize generator
     print_header(args)
     generator = MLDSACertificateGenerator(args.level)

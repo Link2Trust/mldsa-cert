@@ -14,6 +14,8 @@ ML-DSA is a NIST-selected post-quantum cryptographic signature algorithm, former
 - ✅ Subject Alternative Names (SAN) support
 - ✅ Certificate verification and inspection
 - ✅ Key pair generation
+- ✅ **Graphical User Interface (GUI)** - Easy-to-use desktop application
+- ✅ **REST API** - HTTP API for remote certificate generation
 
 ## Security Levels
 
@@ -258,7 +260,29 @@ python mldsa_cert.py --subject "/CN=test.example.com" --output test
 
 ## Usage
 
-### Basic Examples
+### Using the GUI (Recommended for Beginners)
+
+Launch the graphical interface:
+
+```bash
+python3 gui.py
+# or
+./gui.py
+```
+
+The GUI provides:
+- Visual interface for all certificate options
+- Real-time console output
+- Built-in certificate verification
+- Subject Alternative Name (SAN) management
+- **Sign CSRs with your CA certificate** (new!)
+- No command-line knowledge required
+
+**See [GUI-README.md](GUI-README.md) for detailed GUI documentation.**
+
+### Using the Command Line
+
+#### Basic Examples
 
 #### 1. Generate a Self-Signed Certificate (Default ML-DSA-65)
 
@@ -315,7 +339,34 @@ python3 mldsa_cert.py \
   --output testkey
 ```
 
-#### 6. Verify Certificate After Generation
+#### 6. Sign a CSR with a CA Certificate
+
+```bash
+# First, generate a CA
+python3 mldsa_cert.py \
+  --subject "/CN=My Root CA/O=Example Inc/C=US" \
+  --ca \
+  --days 3650 \
+  --output ca
+
+# Then, generate a CSR
+python3 mldsa_cert.py \
+  --subject "/CN=server.example.com/O=Example Inc" \
+  --csr \
+  --output server
+
+# Finally, sign the CSR with the CA
+python3 mldsa_cert.py \
+  --sign-csr server.csr \
+  --ca-cert ca.crt \
+  --ca-key ca.key \
+  --output server-signed \
+  --days 365
+```
+
+Creates `server-signed.crt` - CA-signed certificate
+
+#### 7. Verify Certificate After Generation
 
 ```bash
 python3 mldsa_cert.py \
@@ -328,8 +379,9 @@ python3 mldsa_cert.py \
 
 ```
 usage: mldsa_cert.py [-h] [--level {ml-dsa-44,ml-dsa-65,ml-dsa-87}]
-                     --subject SUBJECT --output OUTPUT [--days DAYS]
+                     [--subject SUBJECT] [--output OUTPUT] [--days DAYS]
                      [--san SAN] [--ca] [--csr] [--key-only] [--verify]
+                     [--sign-csr CSR_FILE] [--ca-cert CA_CERT] [--ca-key CA_KEY]
 
 Generate ML-DSA (Post-Quantum) X.509 Certificates (RFC 9881)
 
@@ -337,7 +389,7 @@ options:
   -h, --help            show this help message and exit
   --level {ml-dsa-44,ml-dsa-65,ml-dsa-87}
                         ML-DSA security level (default: ml-dsa-65)
-  --subject SUBJECT     Certificate subject (e.g., "/CN=example.com/O=Example Org/C=US")
+  --subject SUBJECT     Certificate subject (required unless using --sign-csr)
   --output OUTPUT       Output file prefix (will create .key, .pub, .crt files)
   --days DAYS           Certificate validity period in days (default: 365)
   --san SAN             Subject Alternative Name (can be specified multiple times)
@@ -345,6 +397,9 @@ options:
   --csr                 Generate a CSR instead of self-signed certificate
   --key-only            Generate only the key pair (no certificate)
   --verify              Verify and display certificate details after generation
+  --sign-csr CSR_FILE   Sign a CSR with a CA certificate (requires --ca-cert and --ca-key)
+  --ca-cert CA_CERT     CA certificate file for signing CSRs
+  --ca-key CA_KEY       CA private key file for signing CSRs
 ```
 
 ## RFC 9881 Compliance
