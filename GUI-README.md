@@ -296,43 +296,11 @@ chmod 600 certificate.key
 ## Screenshots
 
 ### Certificate Generation Tab
-```
-┌─────────────────────────────────────────────────────────┐
-│ ML-DSA Certificate Generator                            │
-│ Post-Quantum X.509 Certificates (RFC 9881)              │
-├─────────────────────────────────────────────────────────┤
-│ [Certificate Generation] [Output Console]               │
-│                                                          │
-│ Security Level                                           │
-│ ○ ML-DSA-44 (NIST Level 2, ~AES-128)                    │
-│ ● ML-DSA-65 (NIST Level 3, ~AES-192) [Recommended]     │
-│ ○ ML-DSA-87 (NIST Level 5, ~AES-256)                    │
-│                                                          │
-│ Subject Information                                      │
-│ Common Name (CN):    [example.com____________]          │
-│ Organization (O):     [Example Inc___________]          │
-│ Organizational Unit: [IT Department_________]           │
-│ Country (C):         [US_____________________]          │
-│                                                          │
-│ Subject Alternative Names (SANs)                         │
-│ ┌────────────────────────────────────────┐              │
-│ │ DNS:www.example.com                    │              │
-│ │ DNS:mail.example.com                   │              │
-│ └────────────────────────────────────────┘              │
-│ [Add DNS Name] [Add IP Address] [Remove Selected]       │
-│                                                          │
-│ Certificate Options                                      │
-│ Validity (days):  [365▼]                                │
-│ Output filename:  [certificate____________] [Browse]    │
-│ ☐ Generate as CA certificate                            │
-│ ☐ Generate CSR instead of certificate                   │
-│ ☐ Generate key pair only                                │
-│                                                          │
-│ [Generate Certificate] [Verify Certificate] [Clear]     │
-└─────────────────────────────────────────────────────────┘
-│ Ready                                                    │
-└─────────────────────────────────────────────────────────┘
-```
+<img width="579" height="732" alt="image" src="https://github.com/user-attachments/assets/9205f415-4772-4d60-ad8a-868e1ac89102" />
+
+<img width="570" height="733" alt="image" src="https://github.com/user-attachments/assets/6026dcc1-530f-4755-b8a2-3b0335b30012" />
+
+<img width="570" height="729" alt="image" src="https://github.com/user-attachments/assets/45c18601-6457-4e7e-80a2-3f6b2b4939f8" />
 
 ## Future Enhancements
 
